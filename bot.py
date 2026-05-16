@@ -1,9 +1,6 @@
-import atexit
-import logging
 import os
-import signal
-import sys
 import time
+import logging
 from flask import Flask, request
 import telebot
 from telebot import types
@@ -15,11 +12,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Token Render'dagi Environment Variable'dan avtomatik olinadi
+# Token Render muhitidan olinadi
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN muhit o'zgaruvchisi o'rnatilmagan")
 
+# Kanal sozlamalari
 CHANNEL_ID = "@Animelaar_kanal"
 CHANNEL_URL = "https://t.me/Animelaar_kanal"
 ADMIN_ID = 6222096713
@@ -27,15 +25,14 @@ ADMIN_ID = 6222096713
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Admin bosqichlarini eslab qolish uchun vaqtinchalik baza
+# Admin bosqichlari uchun vaqtinchalik xotira
 temp_data = {}
 
-# ── DB init ───────────────────────────────────────────────────────────────────
+# DBni ishga tushirish
 db.init_db()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def md(text: str) -> str:
-    """MarkdownV2 parsi xato bermasligi uchun maxsus belgilarni tozalash."""
     special = r"_*[]()~`>#+-=|{}.!"
     return "".join(f"\\{c}" if c in special else c for c in str(text))
 
@@ -136,7 +133,7 @@ def admin_panel(message):
 
 # ── Admin Flows (Anime qo'shish) ───────────────────────────────────────────────
 def flow_ask_anime_code(message):
-    msg = bot.send_message(message.chat.id, "➕ <b>Anime qo'shish — 1-qadam</b>\n\nAnime uchun qisqa <b>kod</b> kiriting (masalan: <code>1</code>, <code>AOT</code>):", parse_mode="HTML")
+    msg = bot.send_message(message.chat.id, "➕ <b>Anime qo'shish — 1-qadam</b>\n\nAnime uchun qisqa <b>kod</b> kiriting:", parse_mode="HTML")
     bot.register_next_step_handler(msg, flow_receive_anime_code)
 
 def flow_receive_anime_code(message):
@@ -176,7 +173,7 @@ def flow_receive_anime_poster(message):
     db.add_anime(code, title, poster_file_id)
     bot.send_message(message.chat.id, f"✅ <b>{title}</b> (kod: <code>{code}</code>) bazaga qo'shildi!", reply_markup=admin_panel_markup(), parse_mode="HTML")
 
-# ── Admin Flows (Qism qo'shish - TUZATILDI!) ──────────────────────────────────
+# ── Admin Flows (Qism qo'shish) ────────────────────────────────────────────────
 def flow_ask_episode_num(message, anime_code: str):
     eps = db.get_episode_numbers(anime_code)
     existing = f" (mavjud qismlar: {eps})" if eps else ""
@@ -191,9 +188,7 @@ def flow_receive_episode_num(message):
         return
     ep_num = int(message.text.strip())
     temp_data[message.from_user.id]["episode_num"] = ep_num
-    msg = bot.send_message(message.chat.id, f"✅ Qism raqami: <b>{ep_num}</b>\n\n制造 Endi shu qismning <b>video faylini</b> yuboring:", parse_mode="HTML")
-    
-    # MANA SHU YERGA KEYINGI QADAMNI KUTISH QO'SHILDI (XATO TUZATILDI!)
+    msg = bot.send_message(message.chat.id, f"✅ Qism raqami: <b>{ep_num}</b>\n\n📼 Endi shu qismning <b>video faylini</b> yuboring:", parse_mode="HTML")
     bot.register_next_step_handler(msg, flow_receive_episode_video)
 
 def flow_receive_episode_video(message):
@@ -201,17 +196,15 @@ def flow_receive_episode_video(message):
         msg = bot.send_message(message.chat.id, "❗ Iltimos, faqat video fayl yuboring:")
         bot.register_next_step_handler(msg, flow_receive_episode_video)
         return
-    
     data = temp_data.pop(message.from_user.id, {})
     anime_code = data.get("anime_code", "?")
     ep_num = data.get("episode_num", 0)
     file_id = message.video.file_id
-    
     db.add_episode(anime_code, ep_num, file_id)
     eps = db.get_episode_numbers(anime_code)
-    bot.send_message(message.chat.id, f"✅ <code>{anime_code}</code> — <b>{ep_num}-qism</b> muvaffaqiyatli qo'shildi!\n\nJami qismlar: {eps}", reply_markup=admin_panel_markup(), parse_mode="HTML")
+    bot.send_message(message.chat.id, f"✅ <code>{anime_code}</code> — <b>{ep_num}-qism</b> qo'shildi!\n\nJami qismlar: {eps}", reply_markup=admin_panel_markup(), parse_mode="HTML")
 
-# ── Standalone Media Handlers ─────────────────────────────────────────────────
+# ── Standalone Handlers ────────────────────────────────────────────────────────
 @bot.message_handler(content_types=["photo"])
 def handle_photo(message):
     pass
@@ -231,7 +224,7 @@ def handle_code(message):
     code = message.text.strip().upper()
     anime = db.get_anime(code)
     if not anime:
-        bot.reply_to(message, f"❌ *{md(code)}* kodi topilmadi\\.\n\nKodlar kanali: https://t\\.me/Animelaar\\_kanal", parse_mode="MarkdownV2")
+        bot.reply_to(message, f"❌ *{md(code)}* kodi topilmadi\\.", parse_mode="MarkdownV2")
         return
     eps = db.get_episode_numbers(code)
     if not eps:
@@ -258,13 +251,10 @@ def callback_handler(call):
     if call.data.startswith("ep_"):
         rest = call.data[3:]
         sep = rest.rfind("_")
-        if sep == -1:
-            return
+        if sep == -1: return
         anime_code = rest[:sep]
-        try:
-            ep_num = int(rest[sep + 1 :])
-        except ValueError:
-            return
+        try: ep_num = int(rest[sep + 1 :])
+        except ValueError: return
         episode = db.get_episode(anime_code, ep_num)
         if episode:
             bot.answer_callback_query(call.id)
@@ -285,9 +275,7 @@ def callback_handler(call):
         bot.send_message(call.message.chat.id, "⚙️ Bu bo'lim tez orada mukammal qilib ishga tushiriladi!")
         return
     
-    # Admin amallari
-    if not is_admin(uid):
-        return
+    if not is_admin(uid): return
     if call.data == "admin_back":
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, "🔐 *Admin Panel*", reply_markup=admin_panel_markup(), parse_mode="MarkdownV2")
@@ -320,7 +308,7 @@ def callback_handler(call):
         bot.send_message(call.message.chat.id, f"📊 *Statistika*\n\n🎌 Animelar: `{stats['total_animes']}`\n🎬 Qismlar: `{stats['total_episodes']}`\n👥 Foydalanuvchilar: `{stats['total_users']}`", reply_markup=admin_panel_markup(), parse_mode="MarkdownV2")
         return
 
-# ── WEB SERVER & WEBHOOK CONFIG ───────────────────────────────────────────────
+# ── WEB SERVER & WEBHOOK CONFIG (Aynan Render uchun) ──────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return "Bot is running 24/7 on Render!", 200
@@ -336,7 +324,6 @@ if __name__ == "__main__":
     bot.remove_webhook()
     time.sleep(1)
     
-    # Render beradigan avtomatik tashqi URL havola
     RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")
     if RENDER_URL:
         bot.set_webhook(url=RENDER_URL + "/" + TOKEN)
