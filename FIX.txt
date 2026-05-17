@@ -1,0 +1,4 @@
+
+# FIX:
+# flow_receive_episode_video funksiyasi yangilandi
+# database reconnect tizimi qo'shildi
