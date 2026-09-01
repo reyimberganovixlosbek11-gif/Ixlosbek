@@ -1,0 +1,2 @@
+# Dependencies for main.py
+python-telegram-bot>=20,<23

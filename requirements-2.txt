@@ -1,2 +1,0 @@
-# Dependencies for main_merged.py
-python-telegram-bot>=20,<23
